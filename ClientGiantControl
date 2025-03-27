@@ -1,0 +1,54 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+
+local Events = ReplicatedStorage:WaitForChild("Events")
+local GiantEvent = Events.GiantEvent
+
+local Mouse = game.Players.LocalPlayer:GetMouse()
+
+local Control = {}
+Control.__index = Control
+
+function Control.new()
+	local self = {}
+	self.Player = Players.LocalPlayer
+	self.Connection = nil
+	self.SkillFolder = self.Player.Skills
+	self.CurrentSkill = nil	
+	
+	setmetatable(self,Control)
+	
+	self:WaitForInput()
+	return self
+end
+
+function Control:WaitForInput()
+	self.Connection = UserInputService.InputBegan:Connect(function(input,GameProccessedEvent)
+		if GameProccessedEvent then return end
+		
+		if input.KeyCode == Enum.KeyCode.One then -- Choosing or canseling skill
+			self:ChooseOrCancelSkill(1) return
+		elseif input.KeyCode == Enum.KeyCode.Two then 
+			self:ChooseOrCancelSkill(2) return
+		elseif input.KeyCode == Enum.KeyCode.Three then 
+			self:ChooseOrCancelSkill(3) return
+		end 
+		
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then -- for casting skills or kicking
+			if self.CurrentSkill ~= nil then 
+       			GiantEvent:FireServer(self.CurrentSkill, Mouse.Hit) self.CurrentSkill = nil return -- casting skill
+			else
+				GiantEvent:FireServer("Kick",self.Player.Character.PrimaryPart.Position) -- for kicking
+			end
+		end
+		
+	end)
+end
+
+function Control:ChooseOrCancelSkill(number)
+	if self.CurrentSkill == number then self.CurrentSkill = nil return end
+	self.CurrentSkill = number
+end
+
+return Control
