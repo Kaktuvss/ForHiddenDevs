@@ -1,0 +1,498 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
+
+
+local Modules = ReplicatedStorage:WaitForChild("Modules")
+local CrushModule = require(Modules.CrushModule)
+local RoundSystem = Modules.RoundSystem
+
+
+local Events = ReplicatedStorage:WaitForChild("Events")
+local GiantEvent = Events.GiantEvent
+
+local VFx = ReplicatedStorage:WaitForChild("VFx")
+
+local GiantController = {}
+GiantController.__index = GiantController
+
+function GiantController.new(Player)
+	local self = {}
+	self.Player = Player
+	self.EventConnection = nil 
+	self.RoundConnection = nil
+	
+	setmetatable(self,GiantController)
+	task.spawn(function()
+		self:Connection2()
+		self:Connection()
+	end)
+	
+	return self
+end
+
+
+function GiantController:Connection()
+	self.EventConnection = GiantEvent.OnServerEvent:Connect(function(player,skill : string,Position : CFrame)
+		if player ~= self.Player then return end
+		
+		if skill == "Kick" then
+			if self.Player.Punch.Value ~= 0 then return end
+			self.Player.Punch.Value = 2
+			
+			local HitBox
+			
+			local PunchAnimation = Instance.new("Animation")
+			PunchAnimation.AnimationId = "rbxassetid://131991996989131"
+			local AnimationTrack : AnimationTrack = self.Player.Character.Humanoid.Animator:LoadAnimation(PunchAnimation)
+			AnimationTrack.Looped = false
+			AnimationTrack.Priority = Enum.AnimationPriority.Action
+			AnimationTrack:Play()
+			
+			AnimationTrack:GetMarkerReachedSignal("SwingDown"):Connect(function()
+				player.Character.HumanoidRootPart.SwingDown:Play()
+			end)
+			
+			AnimationTrack.Stopped:Connect(function()
+				HitBox = Instance.new("Part",workspace)
+				HitBox.Name = "HitBox"
+				HitBox.Anchored = true
+				HitBox.CanCollide = false
+				HitBox.CanQuery = false
+				HitBox.Position = player.Character.PrimaryPart.Position - Vector3.new(0,30,0)
+				HitBox.Size = Vector3.new(40,15,40)
+				HitBox.Transparency = 1
+				
+				
+				local VFxPunch = VFx.Punch.WhiteCyrcle:Clone()
+				VFxPunch.Position = player.Character.PrimaryPart.Position - Vector3.new(0,30,0)
+				VFxPunch.Parent = workspace
+				VFxPunch.Stomp:Play()
+				local TweenNew = TweenService:Create(VFxPunch,TweenInfo.new(3.0),{Size = Vector3.new(5,80,80),Transparency = 1})
+				TweenNew:Play()
+				TweenNew.Completed:Connect(function() VFxPunch:Destroy() end)
+				
+				
+				local Touched = workspace:GetPartsInPart(HitBox)
+				for _,Part in pairs(Touched) do
+					if Part.Parent and Part.Parent:FindFirstChild("Humanoid") and Part.Parent.Name ~= self.Player.Name then
+						self:payForPlayerDath(Players:GetPlayerFromCharacter(Part.Parent))
+						continue
+					end
+					if Part:IsDescendantOf(workspace.Map:GetChildren()[1].Distracteble) then
+					CrushModule:TearAPart(Part,self.Player.Character.PrimaryPart.Position)
+					end
+				end	
+			end)
+			
+			task.wait(5)
+			
+			HitBox:Destroy()
+			self.Player.Punch.Value = 0
+			return
+		end
+		
+		for i = 0,3,1 do
+			if i == skill then
+				local ChoosedSkill = player.Skills:GetChildren()[i]
+				if ChoosedSkill.Value > 0 then return end
+				ChoosedSkill.Value = ChoosedSkill:GetAttribute("CoolDown")
+				
+				task.spawn(function()
+					for i = ChoosedSkill:GetAttribute("CoolDown"),0.5,-0.5 do
+						ChoosedSkill.Value -= 0.5
+						task.wait(0.5)
+					end
+				end)
+				
+				if ChoosedSkill:GetAttribute("Skill") == "Wrestler Jump" then
+					local RadioAnimation = Instance.new("Animation")
+					RadioAnimation.AnimationId = "rbxassetid://132386020606519"
+					local AnimationTrack : AnimationTrack = self.Player.Character.Humanoid.Animator:LoadAnimation(RadioAnimation)
+					AnimationTrack.Looped = false
+					AnimationTrack.Priority = Enum.AnimationPriority.Action
+					AnimationTrack:Play()
+					
+					AnimationTrack:GetMarkerReachedSignal("stop"):Once(function()
+						AnimationTrack:AdjustSpeed(0)
+					end)
+					
+					
+					local filter = RaycastParams.new()
+					filter.FilterType = Enum.RaycastFilterType.Include
+					filter.FilterDescendantsInstances = {workspace.Map:GetChildren()[1].Distracteble, workspace.Map:GetChildren()[1].Borders.Floor}
+
+					local rayCast = workspace:Raycast(Position.Position + Vector3.new(0,100,0), Vector3.new(0, -1000, 0), filter)
+					
+					self.Player.Character.PrimaryPart.CartoonFalling:Play()
+					self.Player.Character.PrimaryPart.Anchored = true
+					local partTable = {}
+					
+					local start = self.Player.Character.PrimaryPart.Position
+					local target = rayCast.Position
+
+					local Distance = (target - start).Magnitude
+					local Direction = (target - start).Unit
+
+					for i = -Distance / 2, Distance / 2, 1 do
+						local newY = Distance / 2 - math.abs(i)
+
+						local part = Instance.new("Part",workspace.Trash)
+						part.Size = Vector3.new(1, 1, 1)
+						part.CanCollide = false
+						part.CanQuery = false
+						part.Anchored = true
+						part.Transparency = 1
+						part.Position = start + Direction * i + Vector3.new(0, newY, 0) + Direction * Distance / 2
+						
+						table.insert(partTable, part)
+					end
+					
+					self.Player.Character.PrimaryPart.CoilyJump:Play()
+					for i,Part : Part in pairs(partTable) do
+						local cloudVFx = ReplicatedStorage.VFx.Cloud:Clone()
+						
+						self.Player.Character:PivotTo(Part.CFrame)
+						if i + 1 < #partTable then self.Player.Character:PivotTo(CFrame.lookAt(self.Player.Character.PrimaryPart.Position, partTable[i + 1].Position)) end
+						cloudVFx.Position = Part.Position
+						
+						if i % 12 == 0 then
+							cloudVFx.Parent = workspace.VFClient
+							game.Debris:AddItem(cloudVFx,5.0)
+						end
+						task.wait()
+					end
+					self.Player.Character.PrimaryPart.CartoonFalling:Stop()
+					
+					local cloudBoomVfx = ReplicatedStorage.VFx.CloudBoom:Clone()
+					cloudBoomVfx.Position = partTable[#partTable].Position
+					cloudBoomVfx.Parent = workspace.VFClient		game.Debris:AddItem(cloudBoomVfx, 5.0)
+					
+					AnimationTrack:Stop()
+					self.Player.Character:PivotTo(self.Player.Character:GetPivot() + Vector3.new(0, 20, 0))
+					self.Player.Character.PrimaryPart.Anchored = false
+					self.Player.Character.PrimaryPart.FallDamage:Play()
+					
+					local hitBox = Instance.new("Part",workspace.Trash)
+					hitBox.Anchored = true
+					hitBox.CanQuery = false
+					hitBox.CanCollide = false
+					hitBox.Transparency = 1
+					hitBox.Size = Vector3.new(50, 30, 50)
+					hitBox.Position = partTable[#partTable].Position
+					
+					local Filter = OverlapParams.new()
+					Filter.FilterType = Enum.RaycastFilterType.Include
+					local charlist = {}
+					for _,player : Player in pairs(Players:GetChildren()) do
+						if player:GetAttribute("ALive") == true and player ~= Modules.GiantController.CurrentGiant.Value then charlist[#charlist + 1] = player.Character end
+					end
+					if #workspace.Map:GetChildren() > 0 then 
+						Filter.FilterDescendantsInstances = {workspace.Map:GetChildren()[1].Distracteble,charlist} 
+					end
+					local Touched = workspace:GetPartsInPart(hitBox,Filter)
+					for _,part : Part in pairs(Touched) do
+						if part.Parent and table.find(charlist,part.Parent) then 
+							self:payForPlayerDath(Players:GetPlayerFromCharacter(part.Parent)) 
+							continue
+						else
+							CrushModule:TearAPart(part, player.Character.PrimaryPart.Position)
+						end
+					end
+					
+					for _,v in pairs(partTable) do
+						v:Destroy()
+					end
+					hitBox:Destroy()
+				end
+				
+				if ChoosedSkill:GetAttribute("Skill") == "Napalm Bomb" then
+					local RadioAnimation = Instance.new("Animation")
+					RadioAnimation.AnimationId = "rbxassetid://90859891187917"
+					local AnimationTrack : AnimationTrack = self.Player.Character.Humanoid.Animator:LoadAnimation(RadioAnimation)
+					AnimationTrack.Looped = false
+					AnimationTrack.Priority = Enum.AnimationPriority.Action
+					AnimationTrack:Play()
+					
+					local Radio = ReplicatedStorage.Models.GiantWeopens.Radio:Clone()
+					Radio.Parent = player.Character
+					local Motor6d = Instance.new("Motor6D")
+					Motor6d.Part0 = player.Character.RightHand
+					Motor6d.Part1 = Radio
+					Motor6d.Parent = player.Character.RightHand
+					Motor6d.Name = "Radio"
+					Motor6d.C0 = CFrame.new(Vector3.new(-0.1, -1.651, -9.837)) * CFrame.Angles(0,0,math.rad(30))
+					
+					AnimationTrack:GetMarkerReachedSignal("start"):Once(function()
+						Radio.Speak:Play()
+					end)
+					
+					AnimationTrack.Ended:Once(function()
+						Radio.Speak:Stop()
+						Motor6d:Destroy()
+						Radio.Parent = workspace.Trash
+						local CrocodiloBombordilo = ReplicatedStorage.Models.GiantWeopens.CrocodiloBombardilo:Clone()
+						local filter = RaycastParams.new()
+						filter.FilterType = Enum.RaycastFilterType.Include
+						filter.FilterDescendantsInstances = {workspace.Map:GetChildren()[1].Distracteble, workspace.Map:GetChildren()[1].Borders.Floor}
+
+						local rayCast = workspace:Raycast(Position.Position + Vector3.new(0,100,0), Vector3.new(0, -1000, 0), filter)
+						CrocodiloBombordilo:SetAttribute("Target",rayCast.Position)
+
+						CrocodiloBombordilo.Parent = workspace.Trash
+					end)
+				end
+				
+				if ChoosedSkill:GetAttribute("Skill") == "X-Ray" then
+					self.Player.Character.PrimaryPart.XRay:Play()
+					for _,player :Player in pairs(Players:GetChildren()) do
+						if player == self.Player then continue end
+						if player:GetAttribute("ALive") == false then continue end
+						local highlight = Instance.new("Highlight",player.Character)
+						highlight.FillColor = Color3.fromRGB(255, 255, 255)
+						highlight.OutlineColor = Color3.fromRGB(255, 0, 0)
+						game.Debris:AddItem(highlight,5.0)
+					end
+				end
+				
+				if ChoosedSkill:GetAttribute("Skill") == "Homing Shark" then
+					local shark = ReplicatedStorage.Models.GiantWeopens["Tralalero Tralala"]:Clone()
+					shark:PivotTo(player.Character:GetPivot())
+					shark.Parent = workspace.Trash
+				end
+			
+				if ChoosedSkill:GetAttribute("Skill") == "Sword Throw" then
+					local Sword = ReplicatedStorage.Models.GiantWeopens.Sword2:Clone() -- creating sword
+					Sword.Parent = player.Character
+					local Motor6d = Instance.new("Motor6D")
+					Motor6d.Part0 = player.Character.LeftHand
+					Motor6d.Part1 = Sword["Sphere.004"]
+					Motor6d.Parent = player.Character.LeftHand
+					Motor6d.Name = "Sphere.004"
+					Motor6d.C0 = CFrame.Angles(0,0,math.rad(90))
+					
+					local Animation = Instance.new("Animation") -- Playing Animation
+					Animation.AnimationId = "rbxassetid://133194473892983"
+					local AnimationTrack : AnimationTrack = player.Character.Humanoid.Animator:LoadAnimation(Animation)
+					AnimationTrack:Play()
+					
+					AnimationTrack:GetMarkerReachedSignal("Throw"):Connect(function() -- Applying Crush
+						player.Character.HumanoidRootPart.SwordThrow:Play()
+						
+						Motor6d:Destroy()
+						Sword.Parent = workspace
+						Sword.PrimaryPart.Anchored = true
+						Sword:PivotTo(Position)
+						Sword:PivotTo(Sword.PrimaryPart.CFrame + (Sword.PrimaryPart.CFrame.LookVector * 10))
+						
+						local Touched = workspace:GetPartsInPart(Sword.PrimaryPart)
+						for _,Part in pairs(Touched) do
+							if Part.Parent and Part.Parent:FindFirstChild("Humanoid") and Part.Parent.Name ~= self.Player.Name then
+								self:payForPlayerDath(Players:GetPlayerFromCharacter(Part.Parent))
+								continue
+							end
+						end	
+						for _,part : Part in pairs(Sword:GetChildren()) do
+							local TweenNew = TweenService:Create(part,TweenInfo.new(3.0),{Color = Color3.fromRGB(255, 255, 255)})
+							TweenNew:Play()
+							part.Material = Enum.Material.Neon
+						end
+						task.wait(3.0)
+						Sword.Part.ParticleEmitter.Enabled = true
+						local Touched = workspace:GetPartsInPart(Sword.PrimaryPart)
+						for _,Part in pairs(Touched) do
+							if Part.Parent and Part.Parent:FindFirstChild("Humanoid") and Part.Parent.Name ~= self.Player.Name then
+								self:payForPlayerDath(Players:GetPlayerFromCharacter(Part.Parent))
+								continue
+							end
+							if Part:IsDescendantOf(workspace.Map:GetChildren()[1].Distracteble) then
+								CrushModule:TearAPart(Part,Sword.PrimaryPart.Position)
+							end
+						end	
+						local ExplosionSound = ReplicatedStorage.SFX.SwordExlposionSword:Clone()
+						ExplosionSound.Position = Sword.PrimaryPart.Position
+						ExplosionSound.Parent = workspace
+						ExplosionSound.Explosion:Play()
+						game.Debris:AddItem(ExplosionSound,2.0)
+						
+						Sword:Destroy()
+					end)
+				end
+				
+				if ChoosedSkill:GetAttribute("Skill") == "Super Stomp" then 
+
+					local HitBox
+
+					local PunchAnimation = Instance.new("Animation")
+					PunchAnimation.AnimationId = "rbxassetid://80582583027102"
+					local AnimationTrack : AnimationTrack = self.Player.Character.Humanoid.Animator:LoadAnimation(PunchAnimation)
+					AnimationTrack.Looped = false
+					AnimationTrack.Priority = Enum.AnimationPriority.Action
+					AnimationTrack:Play()
+
+					AnimationTrack:GetMarkerReachedSignal("event"):Connect(function()
+						player.Character.HumanoidRootPart.SwingDown:Play()
+					end)
+
+					AnimationTrack.Ended:Connect(function()
+						HitBox = Instance.new("Part",workspace)
+						HitBox.Name = "HitBox"
+						HitBox.Anchored = true
+						HitBox.CanCollide = false
+						HitBox.CanQuery = false
+						HitBox.Position = player.Character.PrimaryPart.Position - Vector3.new(0,25,0)
+						HitBox.Size = Vector3.new(60,25,60)
+						HitBox.Transparency = 1
+						game.Debris:AddItem(HitBox,3.0)
+						
+
+						local VFxPunch1 = VFx.Punch.WhiteCyrcle:Clone()
+						VFxPunch1.Position = player.Character.PrimaryPart.Position - Vector3.new(0,30,0)
+						VFxPunch1.Parent = workspace
+						VFxPunch1.Stomp:Play()
+						local TweenNew1 = TweenService:Create(VFxPunch1,TweenInfo.new(3.0),{Size = Vector3.new(5,140,140),Transparency = 1})
+						TweenNew1:Play()
+						TweenNew1.Completed:Connect(function() VFxPunch1:Destroy() end)
+						local VFxPunch1 = VFx.Punch.WhiteCyrcle:Clone()
+						VFxPunch1.Position = player.Character.PrimaryPart.Position - Vector3.new(0,20,0)
+						VFxPunch1.Parent = workspace
+						VFxPunch1.Stomp:Play()
+						local TweenNew1 = TweenService:Create(VFxPunch1,TweenInfo.new(3.0),{Size = Vector3.new(5,140,140),Transparency = 1})
+						TweenNew1:Play()
+						TweenNew1.Completed:Connect(function() VFxPunch1:Destroy() end)
+						local VFxPunch1 = VFx.Punch.WhiteCyrcle:Clone()
+						VFxPunch1.Position = player.Character.PrimaryPart.Position - Vector3.new(0,10,0)
+						VFxPunch1.Parent = workspace
+						VFxPunch1.Stomp:Play()
+						local TweenNew1 = TweenService:Create(VFxPunch1,TweenInfo.new(3.0),{Size = Vector3.new(5,140,140),Transparency = 1})
+						TweenNew1:Play()
+						TweenNew1.Completed:Connect(function() VFxPunch1:Destroy() end)
+
+
+						local Touched = workspace:GetPartsInPart(HitBox)
+						for _,Part in pairs(Touched) do
+							if Part.Parent and Part.Parent:FindFirstChild("Humanoid") and Part.Parent.Name ~= self.Player.Name then
+								self:payForPlayerDath(Players:GetPlayerFromCharacter(Part.Parent))
+								continue
+							end
+							if Part:IsDescendantOf(workspace.Map:GetChildren()[1].Distracteble) then
+								Part:Destroy()
+							end
+						end	
+					end)
+
+					return
+				end
+				
+				if ChoosedSkill:GetAttribute("Skill") == "Run" then
+					self.Player.Character.Humanoid.WalkSpeed = 70
+					task.wait(5.0)
+					self.Player.Character.Humanoid.WalkSpeed = 40
+				end
+				
+				if ChoosedSkill:GetAttribute("Skill") == "Rocket Launcher" then 
+						local RocketLauncher = ReplicatedStorage.Models.GiantWeopens.RocketLauncher:Clone() -- creating sword
+						RocketLauncher.Parent = player.Character
+						local Motor6d = Instance.new("Motor6D")
+						Motor6d.Part0 = player.Character.RightHand
+						Motor6d.Part1 = RocketLauncher
+						Motor6d.Parent = player.Character.RightHand
+						Motor6d.Name = "RocketLauncher"
+						Motor6d.C0 = CFrame.new(Vector3.new(-0.324, 10.576, -5.87)) * CFrame.Angles(0,math.rad(-180),math.rad(-90))
+
+						local Animation = Instance.new("Animation") -- Playing Animation
+						Animation.AnimationId = "rbxassetid://107646788020473"
+						local AnimationTrack : AnimationTrack = player.Character.Humanoid.Animator:LoadAnimation(Animation)
+						AnimationTrack:Play()
+										
+						AnimationTrack:GetMarkerReachedSignal("Fire"):Connect(function() -- Applying Crush
+							local Rocket = ReplicatedStorage.Models.GiantWeopens.Rocket:Clone()
+							Rocket.Parent = workspace.VFClient
+							Rocket:PivotTo(RocketLauncher.CFrame)
+							Rocket:PivotTo(CFrame.new(Rocket.PrimaryPart.Position,Position.Position))
+							Rocket.PartEmit.Sound:Play()
+							RocketLauncher.Fire:Play()
+							
+							local RaycastParam = RaycastParams.new()
+							RaycastParam.FilterDescendantsInstances = {player.Character,Rocket}
+							for i = 0,10000,1 do
+								task.wait()
+								if i % 5 == 0 then
+									local RocketFlare = Rocket.PartEmit:Clone()
+									RocketFlare.Sound:Stop()
+									RocketFlare.Name = "RocketFlare"
+									RocketFlare.Parent = workspace.VFClient
+									game.Debris:AddItem(RocketFlare,10.0)
+								end
+								Rocket:PivotTo(Rocket:GetPivot() + Rocket.PrimaryPart.CFrame.LookVector * 5)
+								local Raycast = workspace:Raycast(Rocket.PrimaryPart.Position,Rocket.PrimaryPart.CFrame.LookVector * 15,RaycastParam)
+								if not Raycast then continue end
+								
+								local Explosion = ReplicatedStorage.VFx.RocketExplosion:Clone()
+								Explosion.CFrame = Rocket.PrimaryPart.CFrame
+								Explosion.Parent = workspace.VFClient
+								Explosion.explosion:Play()
+								game.Debris:AddItem(Explosion,5.0)
+								
+								local plKillHitBox = workspace:GetPartsInPart(Rocket.PlayerHitBox)
+								for _,Part in pairs(plKillHitBox) do
+									if Part.Parent and Part.Parent:FindFirstChild("Humanoid") and Part.Parent.Name ~= self.Player.Name then
+										self:payForPlayerDath(Players:GetPlayerFromCharacter(Part.Parent))
+									end
+								end
+								
+								local Params = OverlapParams.new()
+								Params.FilterDescendantsInstances = {workspace.Map:GetChildren()[1].Distracteble}
+								Params.FilterType = Enum.RaycastFilterType.Include
+								local partHitBox = workspace:GetPartsInPart(Rocket.BuildingHitBox,Params)
+								for _, part : Part in pairs(partHitBox) do
+									CrushModule:TearAPart(part,Rocket.PrimaryPart.Position)
+								end
+								
+								Rocket:Destroy()
+								break
+							end
+							
+						end)
+						AnimationTrack.Ended:Connect(function()
+							RocketLauncher.Parent = workspace
+							Motor6d:Destroy()
+						end)
+				end
+			end
+		end
+	end)
+	
+end
+
+
+function GiantController:Connection2()
+	self.RoundConnection = RoundSystem:GetAttributeChangedSignal("Round"):Connect(function()
+		if RoundSystem:GetAttribute("Round") == false then self:DisableConnection() end
+	end)
+end
+
+
+function GiantController:DisableConnection()
+	if self.EventConnection then
+		self.EventConnection:Disconnect()
+		self.EventConnection = nil
+	end
+	if self.RoundConnection then
+		self.RoundConnection:Disconnect()
+		self.RoundConnection = nil
+	end
+	self.Player = nil
+end
+
+
+function GiantController:payForPlayerDath(player)
+	if not Players:FindFirstChild(tostring(player)) then return end
+	print(player)
+	if player:GetAttribute("ALive") == true then Modules.GiantController.CurrentGiant.Value:SetAttribute("Coin",Modules.GiantController.CurrentGiant.Value:GetAttribute("Coin") + 30) end
+	player:SetAttribute("ALive",false)
+	player.Character.Humanoid.Health = 0
+end
+
+
+return GiantController
